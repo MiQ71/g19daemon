@@ -23,6 +23,8 @@
 #include "plugininterface.hpp"
 #include "ui_g19daemon.h"
 #include <QAction>
+#include <QButtonGroup>
+#include <QSignalBlocker>
 #include <QDir>
 #include <QErrorMessage>
 #include <QFile>
@@ -68,6 +70,13 @@ G19daemon::G19daemon(QWidget *parent)
     connect(ui->mrBackgroundColorButton, SIGNAL(clicked()), SLOT(changeBackgroundColor()));
     connect(ui->actionDisable_plugin_profile, SIGNAL(changed()), SLOT(disablePluginProfile()));
 
+    auto *startupProfileGroup = new QButtonGroup(this);
+    startupProfileGroup->setExclusive(true);
+    startupProfileGroup->addButton(ui->m1StartupProfile, 0);
+    startupProfileGroup->addButton(ui->m2StartupProfile, 1);
+    startupProfileGroup->addButton(ui->m3StartupProfile, 2);
+    startupProfileGroup->addButton(ui->mrStartupProfile, 3);
+
     connect(ui->mKeyTabWidget, SIGNAL(currentChanged(int)), SLOT(swithProfile(int)));
 
     ui->actionDisable_plugin_profile->setIcon(QIcon("://plugin.png"));
@@ -81,8 +90,6 @@ G19daemon::G19daemon(QWidget *parent)
         menuActive = false;
     else
         menuActive = true;
-
-    device->setMKeys(true, false, false, false);
 
     trayIconMenu = new QMenu(this);
     trayIconMenu->addAction(tr("Show"), this, SLOT(show()));
@@ -99,7 +106,38 @@ G19daemon::G19daemon(QWidget *parent)
     loadPluginsIntoMenubar();
     loadSettings();
     disablePluginProfile();
-    sendProfileToPlugins(G19_KEY_M1);
+
+    const int startupProfile = qBound(0, settings->value("StartupProfile", 0).toInt(), 3);
+    G19Keys startupKey = G19_KEY_M1;
+    QSignalBlocker tabSignalBlocker(ui->mKeyTabWidget);
+    ui->mKeyTabWidget->setCurrentIndex(startupProfile);
+
+    if (startupProfile == 0) {
+        device->setMKeys(true, false, false, false);
+        device->setDisplayBrightness(settings->value(ui->m1Brightness->objectName(), 255).toInt());
+        device->setKeysBacklight(settings->value(ui->m1BackgroundColorButton->objectName(),
+                                                  qRgb(183, 184, 187)).value<QColor>());
+    } else if (startupProfile == 1) {
+        startupKey = G19_KEY_M2;
+        device->setMKeys(false, true, false, false);
+        device->setDisplayBrightness(settings->value(ui->m2Brightness->objectName(), 255).toInt());
+        device->setKeysBacklight(settings->value(ui->m2BackgroundColorButton->objectName(),
+                                                  qRgb(183, 184, 187)).value<QColor>());
+    } else if (startupProfile == 2) {
+        startupKey = G19_KEY_M3;
+        device->setMKeys(false, false, true, false);
+        device->setDisplayBrightness(settings->value(ui->m3Brightness->objectName(), 255).toInt());
+        device->setKeysBacklight(settings->value(ui->m3BackgroundColorButton->objectName(),
+                                                  qRgb(183, 184, 187)).value<QColor>());
+    } else {
+        startupKey = G19_KEY_MR;
+        device->setMKeys(false, false, false, true);
+        device->setDisplayBrightness(settings->value(ui->mrBrightness->objectName(), 255).toInt());
+        device->setKeysBacklight(settings->value(ui->mrBackgroundColorButton->objectName(),
+                                                  qRgb(183, 184, 187)).value<QColor>());
+    }
+
+    sendProfileToPlugins(startupKey);
 }
 
 G19daemon::~G19daemon() {
@@ -138,6 +176,11 @@ void G19daemon::loadSettings() {
 
     ui->actionDisable_plugin_profile->setChecked(
             settings->value(ui->actionDisable_plugin_profile->objectName(), false).toBool());
+
+    const int startupProfile = qBound(0, settings->value("StartupProfile", 0).toInt(), 3);
+    const QList<QCheckBox *> startupProfileButtons = {ui->m1StartupProfile, ui->m2StartupProfile,
+                                                       ui->m3StartupProfile, ui->mrStartupProfile};
+    startupProfileButtons[startupProfile]->setChecked(true);
 
     for (QLineEdit *lineEdit: ui->mKeyTabWidget->findChildren<QLineEdit *>()) {
 
@@ -210,6 +253,15 @@ void G19daemon::saveSettings() {
 
     for (QSpinBox *button: {ui->m1Brightness, ui->m2Brightness, ui->m3Brightness, ui->mrBrightness}) {
         settings->setValue(button->objectName(), button->value());
+    }
+
+    const QList<QCheckBox *> startupProfileButtons = {ui->m1StartupProfile, ui->m2StartupProfile,
+                                                       ui->m3StartupProfile, ui->mrStartupProfile};
+    for (int i = 0; i < startupProfileButtons.size(); i++) {
+        if (startupProfileButtons[i]->isChecked()) {
+            settings->setValue("StartupProfile", i);
+            break;
+        }
     }
 
     unsavedSettings = false;
