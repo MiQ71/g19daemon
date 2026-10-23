@@ -50,7 +50,6 @@ G19daemon::G19daemon(QWidget *parent)
     qRegisterMetaType<gAction>("gAction");
 
     device = new G19Device();
-    device->initialize();
 
     settings = new QSettings("G19Daemon", "G19Daemon");
 
@@ -61,6 +60,10 @@ G19daemon::G19daemon(QWidget *parent)
 
     connect(device, SIGNAL(gKey()), SLOT(gKeys()));
     connect(device, SIGNAL(lKey()), SLOT(lKeys()));
+    connect(device, &G19Device::deviceConnected, this, [this]() {
+        swithProfile(ui->mKeyTabWidget->currentIndex());
+    });
+    device->initialize();
 
     connect(ui->actionSave_settings, SIGNAL(triggered()), SLOT(saveSettings()));
 
@@ -108,36 +111,9 @@ G19daemon::G19daemon(QWidget *parent)
     disablePluginProfile();
 
     const int startupProfile = qBound(0, settings->value("StartupProfile", 0).toInt(), 3);
-    G19Keys startupKey = G19_KEY_M1;
     QSignalBlocker tabSignalBlocker(ui->mKeyTabWidget);
     ui->mKeyTabWidget->setCurrentIndex(startupProfile);
-
-    if (startupProfile == 0) {
-        device->setMKeys(true, false, false, false);
-        device->setDisplayBrightness(settings->value(ui->m1Brightness->objectName(), 255).toInt());
-        device->setKeysBacklight(settings->value(ui->m1BackgroundColorButton->objectName(),
-                                                  qRgb(183, 184, 187)).value<QColor>());
-    } else if (startupProfile == 1) {
-        startupKey = G19_KEY_M2;
-        device->setMKeys(false, true, false, false);
-        device->setDisplayBrightness(settings->value(ui->m2Brightness->objectName(), 255).toInt());
-        device->setKeysBacklight(settings->value(ui->m2BackgroundColorButton->objectName(),
-                                                  qRgb(183, 184, 187)).value<QColor>());
-    } else if (startupProfile == 2) {
-        startupKey = G19_KEY_M3;
-        device->setMKeys(false, false, true, false);
-        device->setDisplayBrightness(settings->value(ui->m3Brightness->objectName(), 255).toInt());
-        device->setKeysBacklight(settings->value(ui->m3BackgroundColorButton->objectName(),
-                                                  qRgb(183, 184, 187)).value<QColor>());
-    } else {
-        startupKey = G19_KEY_MR;
-        device->setMKeys(false, false, false, true);
-        device->setDisplayBrightness(settings->value(ui->mrBrightness->objectName(), 255).toInt());
-        device->setKeysBacklight(settings->value(ui->mrBackgroundColorButton->objectName(),
-                                                  qRgb(183, 184, 187)).value<QColor>());
-    }
-
-    sendProfileToPlugins(startupKey);
+    swithProfile(startupProfile);
 }
 
 G19daemon::~G19daemon() {
